@@ -2,11 +2,40 @@
 import json
 import logging
 
+from datetime import datetime
 from typing import Callable, Optional, Union
 from mqttactions.runtime import add_subscriber, get_client
 
 
 logger = logging.getLogger(__name__)
+
+
+class Watch:
+    """Watches a topic for new messages and stores the most recent one.
+
+    Example:
+        light_state = Watch("some-light/state")
+        print(light_state.string) # Interprets messages as UTF8 strings
+    """
+    _topic: str = ""
+    _raw_value: Optional[bytes] = None
+    _last_update: Optional[datetime] = None
+
+    def __init__(self, topic: str):
+        self._topic = topic
+        add_subscriber(topic, self._on_message)
+
+    def _on_message(self, payload: bytes):
+        self._raw_value = payload
+        self._last_update = datetime.now()
+
+    @property
+    def last_update(self) -> Optional[datetime]:
+        return self._last_update
+
+    @property
+    def string(self) -> Optional[str]:
+        return self._raw_value.decode('utf8') if self._raw_value else None
 
 
 def on(topic: str, payload: Optional[Union[str, dict]] = None) -> Callable:
