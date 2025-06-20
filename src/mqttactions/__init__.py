@@ -5,6 +5,7 @@ import logging
 from datetime import datetime
 from typing import Callable, Optional, Union
 from mqttactions.runtime import add_subscriber, get_client
+from mqttactions.statemachine import StateMachine
 
 
 logger = logging.getLogger(__name__)

@@ -1,9 +1,9 @@
 import inspect
-import json
 import logging
 
 from typing import Any, Callable, Dict, List, Optional, Union, TypedDict, get_origin
 import paho.mqtt.client as mqtt
+from mqttactions.payloadconversion import converter_by_type
 
 logger = logging.getLogger(__name__)
 
@@ -16,21 +16,9 @@ class Subscriber(TypedDict):
 
 class SubscriberManager:
     subscribers_by_type: Dict[type, List[Subscriber]]
-    converters: Dict[type, Callable]
 
     def __init__(self) -> None:
-        self.subscribers_by_type = {}
-        self.converters = {}
-
-        # The idea here is to make it easy to add new automatically converted types,
-        # so you can just define a new method named _convert_to_TYPE to support a new one.
-        # -> find all converter functions.
-        for name, method in inspect.getmembers(self, predicate=inspect.isfunction):
-            if name.startswith('_convert_to_'):
-                return_type = method.__annotations__['return']
-                assert name == f'_convert_to_{return_type.__name__}', "Incorrectly named converter method."
-                self.subscribers_by_type[return_type] = []
-                self.converters[return_type] = method
+        self.subscribers_by_type = {t: [] for t in converter_by_type.keys()}
 
     def add_subscriber(self, callback: Callable, payload_filter: Optional[Any] = None):
         callback_type: Optional[type] = None
@@ -74,7 +62,7 @@ class SubscriberManager:
                 continue
 
             try:
-                converted_payload = self.converters[datatype](payload)
+                converted_payload = converter_by_type[datatype](payload)
             except Exception as e:
                 logger.error(f"Unable to convert payload to {datatype}: {e}")
                 continue
@@ -86,18 +74,6 @@ class SubscriberManager:
                     subscriber['callback']()
                 else:
                     subscriber['callback'](converted_payload)
-
-    @staticmethod
-    def _convert_to_bytes(payload: bytes) -> bytes:
-        return payload
-
-    @staticmethod
-    def _convert_to_str(payload: bytes) -> str:
-        return payload.decode('utf8')
-
-    @staticmethod
-    def _convert_to_dict(payload: bytes) -> dict:
-        return json.loads(payload)
 
 
 # The client to be used by runtime functions
