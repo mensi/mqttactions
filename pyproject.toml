@@ -1,6 +1,6 @@
 [project]
 name = "mqttactions"
-version = "0.1.0"
+version = "0.2.0"
 description = "Toolkit to interact with MQTT to build simple action rules"
 readme = "README.md"
 license = { file = "LICENSE.txt" }
