@@ -2,7 +2,7 @@ import logging
 import threading
 from typing import Dict, Optional, Callable, Union
 from mqttactions.runtime import add_subscriber
-from mqttactions.payloadconversion import converter_by_type, ConvertedPayload
+from mqttactions.payloadconversion import converter_by_type, PayloadFilter, matches_filter, get_filter_type
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ class State:
         self._timeout_transition = None
 
     def on_message(self, topic: str, target_state: Union[str, 'State'],
-                   payload_filter: Optional[Union[str, dict]] = None) -> 'State':
+                   payload_filter: PayloadFilter = None) -> 'State':
         """Add a transition triggered by an MQTT message.
 
         Args:
@@ -114,7 +114,7 @@ class StateMachine:
     def __init__(self):
         self.states: Dict[str, State] = {}
         self.topics_watched = set()
-        self.state_transitions: Dict[str, list[tuple[str, Optional[ConvertedPayload]]]] = {}
+        self.state_transitions: Dict[str, list[tuple[str, PayloadFilter]]] = {}
         self.current_state: Optional[State] = None
         self._lock = threading.Lock()
 
@@ -165,7 +165,7 @@ class StateMachine:
             target_state.enter()
 
     def register_transition(self, source_state_name: str, target_state_name: str, topic: str,
-                            payload_filter: Optional[ConvertedPayload] = None):
+                            payload_filter: PayloadFilter = None):
         if topic not in self.topics_watched:
             add_subscriber(topic, self.on_message)
             self.topics_watched.add(topic)
@@ -174,14 +174,10 @@ class StateMachine:
 
     def on_message(self, payload: bytes):
         if self.current_state and self.current_state.name in self.state_transitions:
-            for t, f in self.state_transitions[self.current_state.name]:
-                if f is None:
-                    self.transition_to(t)
-                    break
-
-                converted = converter_by_type[f.__class__](payload)
-                if converted == f:
-                    self.transition_to(t)
+            for target, pfilter in self.state_transitions[self.current_state.name]:
+                converted = converter_by_type[get_filter_type(pfilter)](payload)
+                if matches_filter(converted, pfilter):
+                    self.transition_to(target)
                     break
 
     def get_current_state(self) -> Optional[str]:
