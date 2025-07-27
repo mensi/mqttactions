@@ -34,6 +34,15 @@ class State:
         self.state_machine.register_transition(self.name, target_state_name, topic, payload_filter)
         return self
 
+    def on_message_filtered(self, topic: str, target_state: Union[str, 'State']) -> Callable:
+        """Decorator version of on_message."""
+        target_state_name = target_state if isinstance(target_state, str) else target_state.name
+
+        def decorator(func: Callable) -> Callable:
+            self.state_machine.register_transition(self.name, target_state_name, topic, func)
+            return func
+        return decorator
+
     def after_timeout(self, seconds: float, target_state: Union[str, 'State']) -> 'State':
         """Add a transition triggered after a timeout.
 
