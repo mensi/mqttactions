@@ -16,6 +16,11 @@ def to_bytes(payload: bytes) -> bytes:
 
 
 @converter
+def to_int(payload: bytes) -> int:
+    return int(payload)
+
+
+@converter
 def to_str(payload: bytes) -> str:
     return payload.decode('utf8')
 
