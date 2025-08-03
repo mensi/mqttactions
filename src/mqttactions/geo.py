@@ -167,6 +167,57 @@ class Location:
 
         return decorator
 
+    def _get_sun_events(self):
+        """Helper to get the last and next sun events."""
+        now = datetime.now(self._timezone)
+        today_dt = datetime.combine(now.date(), time(12, 0))
+        yesterday_dt = today_dt - timedelta(days=1)
+        tomorrow_dt = today_dt + timedelta(days=1)
+
+        rise_today = self._sun.get_sunrise_time(today_dt, self._timezone)
+        set_today = self._sun.get_sunset_time(today_dt, self._timezone)
+
+        if rise_today > now:
+            next_sunrise = rise_today
+            last_sunrise = self._sun.get_sunrise_time(yesterday_dt, self._timezone)
+        else:
+            last_sunrise = rise_today
+            next_sunrise = self._sun.get_sunrise_time(tomorrow_dt, self._timezone)
+
+        if set_today > now:
+            next_sunset = set_today
+            last_sunset = self._sun.get_sunset_time(yesterday_dt, self._timezone)
+        else:
+            last_sunset = set_today
+            next_sunset = self._sun.get_sunset_time(tomorrow_dt, self._timezone)
+
+        return now, last_sunrise, next_sunrise, last_sunset, next_sunset
+
+    def is_day(self) -> bool:
+        """Returns True if it's currently daytime."""
+        _, last_sunrise, _, last_sunset, _ = self._get_sun_events()
+        return last_sunrise > last_sunset
+
+    def time_since_sunrise(self) -> timedelta:
+        """Time since the last sunrise during the day and a negative time to the next sunrise during the night."""
+        now, last_sunrise, next_sunrise, _, _ = self._get_sun_events()
+        return now - last_sunrise if self.is_day() else now - next_sunrise
+
+    def time_until_sunrise(self) -> timedelta:
+        """Time until the next sunrise during the night and a negative time since the last sunrise during the day."""
+        now, last_sunrise, next_sunrise, _, _ = self._get_sun_events()
+        return next_sunrise - now if not self.is_day() else last_sunrise - now
+
+    def time_since_sunset(self) -> timedelta:
+        """Time since the last sunset during the night and a negative time to the next sunset during the day."""
+        now, _, _, last_sunset, next_sunset = self._get_sun_events()
+        return now - last_sunset if not self.is_day() else now - next_sunset
+
+    def time_until_sunset(self) -> timedelta:
+        """Time until the next sunset during the day and a negative time since the last sunset during the night."""
+        now, _, _, last_sunset, next_sunset = self._get_sun_events()
+        return next_sunset - now if self.is_day() else last_sunset - now
+
     def stop(self):
         """Stop the background scheduler."""
         self._running = False

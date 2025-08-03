@@ -12,6 +12,10 @@ TEST_LON = 13.40
 TEST_TZ = 'Europe/Berlin'
 BERLIN_TZ = ZoneInfo(TEST_TZ)
 
+# Exact times depend a bit on how exactly the sun events are calculated.
+# To allow for some minor discrepancies, we will use a little tolerance.
+TOLERANCE = timedelta(minutes=5)
+
 # Use known historical data for Berlin on Jan 1st/2nd, 2000
 DATE_2000_01_01 = date(2000, 1, 1)
 DATE_2000_01_02 = date(2000, 1, 2)
@@ -48,7 +52,7 @@ def test_on_sunrise_before_sunrise(location):
 
         assert len(location._pending_callbacks) == 1
         scheduled_time = location._pending_callbacks[0].datetime
-        assert abs(scheduled_time - EXPECTED_SUNRISE_2000_01_01) < timedelta(minutes=5)
+        assert abs(scheduled_time - EXPECTED_SUNRISE_2000_01_01) < TOLERANCE
 
 
 def test_on_sunrise_after_sunrise(location):
@@ -59,7 +63,7 @@ def test_on_sunrise_after_sunrise(location):
 
         assert len(location._pending_callbacks) == 1
         scheduled_time = location._pending_callbacks[0].datetime
-        assert abs(scheduled_time - EXPECTED_SUNRISE_2000_01_02) < timedelta(minutes=5)
+        assert abs(scheduled_time - EXPECTED_SUNRISE_2000_01_02) < TOLERANCE
 
 
 def test_on_sunset_before_sunset(location):
@@ -70,7 +74,7 @@ def test_on_sunset_before_sunset(location):
 
         assert len(location._pending_callbacks) == 1
         scheduled_time = location._pending_callbacks[0].datetime
-        assert abs(scheduled_time - EXPECTED_SUNSET_2000_01_01) < timedelta(minutes=5)
+        assert abs(scheduled_time - EXPECTED_SUNSET_2000_01_01) < TOLERANCE
 
 
 def test_on_sunset_after_sunset(location):
@@ -81,7 +85,7 @@ def test_on_sunset_after_sunset(location):
 
         assert len(location._pending_callbacks) == 1
         scheduled_time = location._pending_callbacks[0].datetime
-        assert abs(scheduled_time - EXPECTED_SUNSET_2000_01_02) < timedelta(minutes=5)
+        assert abs(scheduled_time - EXPECTED_SUNSET_2000_01_02) < TOLERANCE
 
 
 def test_on_localtime_before_target(location):
@@ -119,7 +123,7 @@ def test_on_sunrise_with_offset(location):
 
         assert len(location._pending_callbacks) == 1
         scheduled_time = location._pending_callbacks[0].datetime
-        assert abs(scheduled_time - (EXPECTED_SUNRISE_2000_01_01 + offset)) < timedelta(minutes=5)
+        assert abs(scheduled_time - (EXPECTED_SUNRISE_2000_01_01 + offset)) < TOLERANCE
 
 
 def test_callback_reschedules_itself(location):
@@ -142,4 +146,81 @@ def test_callback_reschedules_itself(location):
         assert len(location._pending_callbacks) == 1
 
         scheduled_time = location._pending_callbacks[0].datetime
-        assert abs(scheduled_time - EXPECTED_SUNRISE_2000_01_02) < timedelta(minutes=5)
+        assert abs(scheduled_time - EXPECTED_SUNRISE_2000_01_02) < TOLERANCE
+
+
+# --- Tests for sun event calculation methods ---
+
+DAY_TIME = datetime(2000, 1, 1, 12, 0, tzinfo=BERLIN_TZ)
+NIGHT_TIME = datetime(2000, 1, 1, 22, 0, tzinfo=BERLIN_TZ)
+
+
+def test_is_day(location):
+    with patch_datetime_now(DAY_TIME):
+        assert location.is_day() is True
+    with patch_datetime_now(NIGHT_TIME):
+        assert location.is_day() is False
+
+
+def test_time_since_sunrise_during_day(location):
+    with patch_datetime_now(DAY_TIME):
+        delta = location.time_since_sunrise()
+        assert delta > timedelta(0)
+        expected = DAY_TIME - EXPECTED_SUNRISE_2000_01_01
+        assert abs(delta - expected) < TOLERANCE
+
+
+def test_time_since_sunrise_during_night(location):
+    with patch_datetime_now(NIGHT_TIME):
+        delta = location.time_since_sunrise()
+        assert delta < timedelta(0)
+        expected = NIGHT_TIME - EXPECTED_SUNRISE_2000_01_02
+        assert abs(delta - expected) < TOLERANCE
+
+
+def test_time_until_sunrise_during_day(location):
+    with patch_datetime_now(DAY_TIME):
+        delta = location.time_until_sunrise()
+        assert delta < timedelta(0)
+        expected = EXPECTED_SUNRISE_2000_01_01 - DAY_TIME
+        assert abs(delta - expected) < TOLERANCE
+
+
+def test_time_until_sunrise_during_night(location):
+    with patch_datetime_now(NIGHT_TIME):
+        delta = location.time_until_sunrise()
+        assert delta > timedelta(0)
+        expected = EXPECTED_SUNRISE_2000_01_02 - NIGHT_TIME
+        assert abs(delta - expected) < TOLERANCE
+
+
+def test_time_since_sunset_during_day(location):
+    with patch_datetime_now(DAY_TIME):
+        delta = location.time_since_sunset()
+        assert delta < timedelta(0)
+        expected = DAY_TIME - EXPECTED_SUNSET_2000_01_01
+        assert abs(delta - expected) < TOLERANCE
+
+
+def test_time_since_sunset_during_night(location):
+    with patch_datetime_now(NIGHT_TIME):
+        delta = location.time_since_sunset()
+        assert delta > timedelta(0)
+        expected = NIGHT_TIME - EXPECTED_SUNSET_2000_01_01
+        assert abs(delta - expected) < TOLERANCE
+
+
+def test_time_until_sunset_during_day(location):
+    with patch_datetime_now(DAY_TIME):
+        delta = location.time_until_sunset()
+        assert delta > timedelta(0)
+        expected = EXPECTED_SUNSET_2000_01_01 - DAY_TIME
+        assert abs(delta - expected) < TOLERANCE
+
+
+def test_time_until_sunset_during_night(location):
+    with patch_datetime_now(NIGHT_TIME):
+        delta = location.time_until_sunset()
+        assert delta < timedelta(0)
+        expected = EXPECTED_SUNSET_2000_01_01 - NIGHT_TIME
+        assert abs(delta - expected) < TOLERANCE
