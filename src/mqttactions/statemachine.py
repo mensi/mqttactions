@@ -149,18 +149,21 @@ class StateMachine:
 
         return state
 
-    def transition_to(self, state_name: str):
+    def transition_to(self, target_state: Union[str, State]):
         """Transition to the specified state.
 
         Args:
-            state_name: The name of the state to transition to
+            target_state: The name of the state to transition to
         """
-        with self._lock:
-            if state_name not in self.states:
-                raise ValueError(f"State '{state_name}' does not exist")
+        if isinstance(target_state, State):
+            target_state = target_state.name
 
-            logger.info(f'Transitioning to state "{state_name}"')
-            target_state = self.states[state_name]
+        with self._lock:
+            if target_state not in self.states:
+                raise ValueError(f"State '{target_state}' does not exist")
+
+            logger.info(f'Transitioning to state "{target_state}"')
+            target_state = self.states[target_state]
 
             if self.current_state == target_state:
                 return  # Already in the target state
