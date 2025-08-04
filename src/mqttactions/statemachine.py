@@ -1,10 +1,15 @@
 import logging
 import threading
+from functools import partial, wraps, update_wrapper
 from typing import Dict, Optional, Callable, Union
 from mqttactions.runtime import add_subscriber
 from mqttactions.payloadconversion import converter_by_type, PayloadFilter, matches_filter, get_filter_type
 
 logger = logging.getLogger(__name__)
+
+# Type aliases to make code more readable
+StateName = str
+MqttTopic = str
 
 
 class State:
@@ -121,13 +126,13 @@ class StateMachine:
     """The main state machine class for managing states and transitions."""
 
     def __init__(self):
-        self.states: Dict[str, State] = {}
+        self.states: Dict[StateName, State] = {}
         self.topics_watched = set()
-        self.state_transitions: Dict[str, list[tuple[str, PayloadFilter]]] = {}
+        self.state_transitions: Dict[MqttTopic, Dict[StateName, list[tuple[StateName, PayloadFilter]]]] = {}
         self.current_state: Optional[State] = None
         self._lock = threading.Lock()
 
-    def add_state(self, name: str) -> State:
+    def add_state(self, name: StateName) -> State:
         """Add a new state to the state machine.
 
         Args:
@@ -149,7 +154,7 @@ class StateMachine:
 
         return state
 
-    def transition_to(self, target_state: Union[str, State]):
+    def transition_to(self, target_state: Union[StateName, State]):
         """Transition to the specified state.
 
         Args:
@@ -176,21 +181,23 @@ class StateMachine:
             self.current_state = target_state
             target_state.enter()
 
-    def register_transition(self, source_state_name: str, target_state_name: str, topic: str,
-                            payload_filter: PayloadFilter = None):
+    def register_transition(self, source_state_name: StateName, target_state_name: StateName,
+                            topic: MqttTopic, payload_filter: PayloadFilter = None):
         if topic not in self.topics_watched:
-            add_subscriber(topic, self.on_message)
+            callback = partial(self.on_message, topic)
+            callback.__name__ = "StateMachine.on_message"
+            add_subscriber(topic, callback)
             self.topics_watched.add(topic)
 
-        self.state_transitions.setdefault(source_state_name, []).append((target_state_name, payload_filter))
+        self.state_transitions.setdefault(topic, {}).setdefault(source_state_name, []).append(
+            (target_state_name, payload_filter))
 
-    def on_message(self, payload: bytes):
-        if self.current_state and self.current_state.name in self.state_transitions:
-            for target, pfilter in self.state_transitions[self.current_state.name]:
-                converted = converter_by_type[get_filter_type(pfilter)](payload)
-                if matches_filter(converted, pfilter):
-                    self.transition_to(target)
-                    break
+    def on_message(self, topic: MqttTopic, payload: bytes):
+        for target, pfilter in self.state_transitions.get(topic, {}).get(self.current_state.name, []):
+            converted = converter_by_type[get_filter_type(pfilter)](payload)
+            if matches_filter(converted, pfilter):
+                self.transition_to(target)
+                break
 
     def get_current_state(self) -> Optional[str]:
         """Get the name of the current state.
