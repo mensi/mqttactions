@@ -1,7 +1,7 @@
 import logging
 import threading
 from functools import partial, wraps, update_wrapper
-from typing import Dict, Optional, Callable, Union
+from typing import Dict, Optional, Callable, Union, Tuple
 from mqttactions.runtime import add_subscriber
 from mqttactions.payloadconversion import converter_by_type, PayloadFilter, matches_filter, get_filter_type
 
@@ -21,7 +21,7 @@ class State:
         self._entry_callbacks = []
         self._exit_callbacks = []
         self._timeout_timer = None
-        self._timeout_transition = None
+        self._timeout_transition: Optional[Tuple[float, Callable[[], 'State']]] = None
 
     def on_message(self, topic: str, target_state: Union[str, 'State'],
                    payload_filter: PayloadFilter = None) -> 'State':
@@ -48,7 +48,7 @@ class State:
             return func
         return decorator
 
-    def after_timeout(self, seconds: float, target_state: Union[str, 'State']) -> 'State':
+    def after_timeout(self, seconds: float, target_state: Union[str, 'State', Callable[[], 'State']]) -> 'State':
         """Add a transition triggered after a timeout.
 
         Args:
@@ -61,14 +61,17 @@ class State:
         Raises:
             ValueError: If a timeout transition is already configured for this state
         """
-        target_state_name = target_state if isinstance(target_state, str) else target_state.name
+        callback = target_state
+        if not callable(callback):
+            target_state_name = target_state if isinstance(target_state, str) else target_state.name
+            callback = lambda: target_state_name
 
         # Check if a timeout transition already exists
         if self._timeout_transition is not None:
             raise ValueError(f"State '{self.name}' already has a timeout transition configured")
 
         # Store the single timeout configuration for this state
-        self._timeout_transition = (seconds, target_state_name)
+        self._timeout_transition = (seconds, callback)
         return self
 
     def on_entry(self, func: Callable) -> Callable:
@@ -97,11 +100,11 @@ class State:
 
         # Set up the timeout transition if configured
         if self._timeout_transition is not None:
-            timeout_seconds, target_state_name = self._timeout_transition
+            timeout_seconds, callback = self._timeout_transition
 
             def timeout_handler():
                 if self.state_machine.current_state == self:
-                    self.state_machine.transition_to(target_state_name)
+                    self.state_machine.transition_to(callback())
 
             self._timeout_timer = threading.Timer(timeout_seconds, timeout_handler)
             self._timeout_timer.start()
@@ -199,10 +202,16 @@ class StateMachine:
                 self.transition_to(target)
                 break
 
-    def get_current_state(self) -> Optional[str]:
+    def get_current_state(self) -> Optional[State]:
+        """Get the current state."""
+        with self._lock:
+            return self.current_state
+
+    def get_current_state_name(self) -> Optional[str]:
         """Get the name of the current state.
 
         Returns:
             The name of the current state or None if no states exist
         """
-        return self.current_state.name if self.current_state else None
+        with self._lock:
+            return self.current_state.name if self.current_state else None

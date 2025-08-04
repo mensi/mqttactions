@@ -16,13 +16,13 @@ class TestStateMachine:
         assert isinstance(state1, State)
         assert state1.name == "idle"
         assert "idle" in sm.states
-        assert sm.get_current_state() == "idle"  # The first state becomes current
+        assert sm.get_current_state_name() == "idle"  # The first state becomes current
 
         # Add a second state
         state2 = sm.add_state("active")
         assert state2.name == "active"
         assert "active" in sm.states
-        assert sm.get_current_state() == "idle"  # Current state unchanged
+        assert sm.get_current_state_name() == "idle"  # Current state unchanged
 
     def test_duplicate_state_raises_error(self):
         """Test that adding duplicate state raises error."""
@@ -38,10 +38,10 @@ class TestStateMachine:
         state1 = sm.add_state("state1")
         state2 = sm.add_state("state2")
 
-        assert sm.get_current_state() == "state1"
+        assert sm.get_current_state_name() == "state1"
 
         sm.transition_to("state2")
-        assert sm.get_current_state() == "state2"
+        assert sm.get_current_state_name() == "state2"
 
     def test_transition_to_nonexistent_state_raises_error(self):
         """Test that transitioning to a non-existent state raises error."""
@@ -148,9 +148,9 @@ class TestState:
         callback = args[1]
 
         # Simulate message received while in state1
-        assert sm.get_current_state() == "state1"
+        assert sm.get_current_state_name() == "state1"
         callback(b"trigger")
-        assert sm.get_current_state() == "state2"
+        assert sm.get_current_state_name() == "state2"
 
     @patch('mqttactions.statemachine.add_subscriber')
     def test_on_message_transition_with_state_object(self, mock_add_subscriber):
@@ -167,7 +167,7 @@ class TestState:
 
         # Simulate message received
         callback(b"")
-        assert sm.get_current_state() == "state2"
+        assert sm.get_current_state_name() == "state2"
 
     @patch('mqttactions.statemachine.add_subscriber')
     def test_message_transition_only_from_current_state(self, mock_add_subscriber):
@@ -183,11 +183,11 @@ class TestState:
 
         # Transition to state2 first
         sm.transition_to("state2")
-        assert sm.get_current_state() == "state2"
+        assert sm.get_current_state_name() == "state2"
 
         # Now trigger the message - should not transition because we're not in state1
         callback(b"")
-        assert sm.get_current_state() == "state2"  # Should remain in state2
+        assert sm.get_current_state_name() == "state2"  # Should remain in state2
 
     def test_timeout_transition(self):
         """Test timeout-based transitions."""
@@ -203,13 +203,13 @@ class TestState:
         sm.transition_to("state1")
 
         # Should start in state1
-        assert sm.get_current_state() == "state1"
+        assert sm.get_current_state_name() == "state1"
 
         # Wait for timeout
         time.sleep(0.2)
 
         # Should have transitioned to state2
-        assert sm.get_current_state() == "state2"
+        assert sm.get_current_state_name() == "state2"
 
     def test_timeout_transition_with_state_object(self):
         """Test timeout transition using a State object."""
@@ -225,7 +225,7 @@ class TestState:
         sm.transition_to("state1")
 
         time.sleep(0.2)
-        assert sm.get_current_state() == "state2"
+        assert sm.get_current_state_name() == "state2"
 
     def test_timeout_cancelled_on_manual_transition(self):
         """Test that timeout is cancelled when manually transitioning."""
@@ -245,7 +245,7 @@ class TestState:
         time.sleep(0.6)
 
         # Should still be in state2, not state3
-        assert sm.get_current_state() == "state2"
+        assert sm.get_current_state_name() == "state2"
 
     def test_method_chaining(self):
         """Test that state methods return self for chaining."""
@@ -275,7 +275,7 @@ class TestState:
 
         # Transition should still work despite exceptions
         sm.transition_to("state2")
-        assert sm.get_current_state() == "state2"
+        assert sm.get_current_state_name() == "state2"
 
     def test_multiple_timeout_transitions_raise_error(self):
         """Test that adding multiple timeout transitions raises an error."""
@@ -312,4 +312,4 @@ class TestState:
             t.join()
 
         # Should end up in a valid state
-        assert sm.get_current_state() in ["state1", "state2"]
+        assert sm.get_current_state_name() in ["state1", "state2"]
