@@ -6,6 +6,9 @@ from typing import Callable, Optional
 from timezonefinder import TimezoneFinder
 from suntime import Sun
 from zoneinfo import ZoneInfo
+import logging
+
+logger = logging.getLogger(__name__)
 
 Callback = namedtuple("Callback", ["datetime", "callable"])
 
@@ -36,6 +39,16 @@ class Location:
 
         # Start the scheduler thread
         self._start_scheduler()
+
+    def _get_sunrise_time(self, dt: datetime) -> datetime:
+        """Get the sunrise time and hack around https://github.com/SatAgro/suntime/issues/30."""
+        td = self._sun.get_sun_timedelta(dt, self._timezone, is_rise_time=True)
+        return datetime.combine(dt.date(), time(tzinfo=self._timezone)) + timedelta(seconds=td.seconds)
+
+    def _get_sunset_time(self, dt: datetime) -> datetime:
+        """Get the sunset time and hack around https://github.com/SatAgro/suntime/issues/30."""
+        td = self._sun.get_sun_timedelta(dt, self._timezone, is_rise_time=False)
+        return datetime.combine(dt.date(), time(tzinfo=self._timezone)) + timedelta(seconds=td.seconds)
 
     def _start_scheduler(self):
         """Start the background scheduler thread."""
@@ -75,18 +88,18 @@ class Location:
                 # Schedule for next day
                 tomorrow_date = datetime.now(self._timezone).date() + timedelta(days=1)
                 noon_tomorrow = datetime.combine(tomorrow_date, time(12, 0))
-                next_sunrise = self._sun.get_sunrise_time(noon_tomorrow, self._timezone)
+                next_sunrise = self._get_sunrise_time(noon_tomorrow)
                 self._pending_callbacks.append(Callback(next_sunrise + effective_offset, job))
 
             # Schedule first event
             now = datetime.now(self._timezone)
             noon_today = datetime.combine(now.date(), time(12, 0))
-            next_event_time = self._sun.get_sunrise_time(noon_today, self._timezone) + effective_offset
+            next_event_time = self._get_sunrise_time(noon_today) + effective_offset
 
             if next_event_time <= now:
                 noon_tomorrow = datetime.combine(now.date() + timedelta(days=1), time(12, 0))
                 next_event_time = (
-                    self._sun.get_sunrise_time(noon_tomorrow, self._timezone) + effective_offset
+                    self._get_sunrise_time(noon_tomorrow) + effective_offset
                 )
 
             self._pending_callbacks.append(Callback(next_event_time, job))
@@ -112,24 +125,28 @@ class Location:
                 # Schedule for next day
                 tomorrow_date = datetime.now(self._timezone).date() + timedelta(days=1)
                 noon_tomorrow = datetime.combine(tomorrow_date, time(12, 0))
-                next_sunset = self._sun.get_sunset_time(noon_tomorrow, self._timezone)
+                next_sunset = self._get_sunset_time(noon_tomorrow)
                 self._pending_callbacks.append(Callback(next_sunset + effective_offset, job))
 
             # Schedule first event
             now = datetime.now(self._timezone)
             noon_today = datetime.combine(now.date(), time(12, 0))
-            next_event_time = self._sun.get_sunset_time(noon_today, self._timezone) + effective_offset
+            next_event_time = self._get_sunset_time(noon_today) + effective_offset
 
             if next_event_time <= now:
                 noon_tomorrow = datetime.combine(now.date() + timedelta(days=1), time(12, 0))
                 next_event_time = (
-                    self._sun.get_sunset_time(noon_tomorrow, self._timezone) + effective_offset
+                    self._get_sunset_time(noon_tomorrow) + effective_offset
                 )
 
             self._pending_callbacks.append(Callback(next_event_time, job))
             return func
 
         return decorator
+
+    def localtime(self):
+        """Get the current local time."""
+        return datetime.now(self._timezone).time()
 
     def on_localtime(self, target_time: time) -> Callable:
         """Decorator to schedule a function to run at a specific local time daily.
@@ -174,22 +191,22 @@ class Location:
         yesterday_dt = today_dt - timedelta(days=1)
         tomorrow_dt = today_dt + timedelta(days=1)
 
-        rise_today = self._sun.get_sunrise_time(today_dt, self._timezone)
-        set_today = self._sun.get_sunset_time(today_dt, self._timezone)
+        rise_today = self._get_sunrise_time(today_dt)
+        set_today = self._get_sunset_time(today_dt)
 
         if rise_today > now:
             next_sunrise = rise_today
-            last_sunrise = self._sun.get_sunrise_time(yesterday_dt, self._timezone)
+            last_sunrise = self._get_sunrise_time(yesterday_dt)
         else:
             last_sunrise = rise_today
-            next_sunrise = self._sun.get_sunrise_time(tomorrow_dt, self._timezone)
+            next_sunrise = self._get_sunrise_time(tomorrow_dt)
 
         if set_today > now:
             next_sunset = set_today
-            last_sunset = self._sun.get_sunset_time(yesterday_dt, self._timezone)
+            last_sunset = self._get_sunset_time(yesterday_dt)
         else:
             last_sunset = set_today
-            next_sunset = self._sun.get_sunset_time(tomorrow_dt, self._timezone)
+            next_sunset = self._get_sunset_time(tomorrow_dt)
 
         return now, last_sunrise, next_sunrise, last_sunset, next_sunset
 
@@ -197,6 +214,16 @@ class Location:
         """Returns True if it's currently daytime."""
         _, last_sunrise, _, last_sunset, _ = self._get_sun_events()
         return last_sunrise > last_sunset
+
+    def is_before_sunrise(self) -> bool:
+        """Returns True if it's currently before sunrise on the current day."""
+        now, _, next_sunrise, _, _ = self._get_sun_events()
+        return now.date() == next_sunrise.date() and now < next_sunrise
+
+    def is_after_sunset(self) -> bool:
+        """Returns True if it's currently after sunset on the current day."""
+        now, _, _, last_sunset, _ = self._get_sun_events()
+        return now.date() == last_sunset.date() and now > last_sunset
 
     def time_since_sunrise(self) -> timedelta:
         """Time since the last sunrise during the day and a negative time to the next sunrise during the night."""
