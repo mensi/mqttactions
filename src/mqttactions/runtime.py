@@ -91,10 +91,32 @@ def _on_mqtt_message(client, userdata, msg):
     _subscribers[msg.topic].notify(msg.payload)
 
 
+def _on_mqtt_connect(client, userdata, connect_flags: mqtt.ConnectFlags,
+                     reason_code: mqtt.ReasonCode, properties: mqtt.Properties):
+    """Connection callback."""
+    if reason_code.is_failure:
+        logger.error(f"MQTT connection failed: {reason_code.getName()}")
+        return
+    logger.info("MQTT connected")
+    for topic in _subscribers:
+        client.subscribe(topic)
+        logger.info(f"Subscribed to topic: {topic}")
+
+
+def _on_mqtt_disconnect(client, userdata, disconnect_flags, reason_code: mqtt.ReasonCode, properties):
+    """Disconnection callback."""
+    if reason_code.is_failure:
+        logger.error(f"MQTT disconnected: {reason_code.getName()}")
+    else:
+        logger.info("MQTT disconnected")
+
+
 def register_client(client: mqtt.Client):
     global _mqtt_client
     _mqtt_client = client
     _mqtt_client.on_message = _on_mqtt_message
+    _mqtt_client.on_connect = _on_mqtt_connect
+    _mqtt_client.on_disconnect = _on_mqtt_disconnect
 
 
 def get_client() -> mqtt.Client:
