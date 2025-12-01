@@ -1,11 +1,9 @@
 import click
-import importlib.util
 import logging
-import os
 import signal
-import sys
 import time
 
+from mqttactions.loader import load_scripts
 from mqttactions.runtime import register_client
 
 logger = logging.getLogger(__name__)
@@ -21,54 +19,11 @@ def handle_signal(sig, frame):
     running = False
 
 
-def load_script(script_path: str) -> bool:
-    """Load a Python script file as a module.
-
-    Args:
-        script_path: Path to the Python script
-
-    Returns:
-        True if a script was loaded successfully, False otherwise
-    """
-    try:
-        # Get the absolute path and check if the file exists
-        abs_path = os.path.abspath(script_path)
-        if not os.path.isfile(abs_path):
-            logger.error(f"Script file not found: {abs_path}")
-            return False
-
-        # Extract module name from filename without extension
-        module_name = os.path.splitext(os.path.basename(script_path))[0]
-
-        # Create a unique module name to avoid conflicts
-        unique_module_name = f"mqttactions_script_{module_name}"
-        if unique_module_name in sys.modules:
-            logger.error(f"Module name {unique_module_name} already in use")
-            return False
-
-        # Load the module
-        logger.debug(f"Loading script: {abs_path} as {unique_module_name}")
-        spec = importlib.util.spec_from_file_location(unique_module_name, abs_path)
-        if spec is None or spec.loader is None:
-            logger.error(f"Failed to create module spec for {abs_path}")
-            return False
-
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[unique_module_name] = module
-        spec.loader.exec_module(module)
-
-        logger.info(f"Successfully loaded script: {script_path}")
-        return True
-
-    except Exception as e:
-        logger.error(f"Error loading script {script_path}: {e}")
-        return False
-
-
 @click.command("run")
 @click.argument('script_paths', nargs=-1, type=click.Path(exists=True))
+@click.option('--web-port', type=int, default=None, help='Run the web interface on this port')
 @click.pass_context
-def run_cmd(ctx, script_paths):
+def run_cmd(ctx, script_paths, web_port):
     """Run automation scripts that respond to MQTT messages.
 
     SCRIPT_PATHS: One or more Python script files to load and execute.
@@ -94,15 +49,19 @@ def run_cmd(ctx, script_paths):
     register_client(client)
 
     # Load all script files
-    loaded_scripts = 0
-    for script_path in script_paths:
-        if load_script(script_path):
-            loaded_scripts += 1
+    loaded_scripts = load_scripts(script_paths)
 
     if loaded_scripts == 0:
         click.echo("Error: No scripts were loaded successfully")
         client.disconnect()
         return 1
+
+    # Run the web interface if requested
+    def shutdown_webserver():
+        pass
+    if web_port:
+        from mqttactions.web.main import run
+        shutdown_webserver = run(web_port)
 
     # Setup signal handlers for graceful shutdown
     signal.signal(signal.SIGINT, handle_signal)
@@ -119,5 +78,8 @@ def run_cmd(ctx, script_paths):
         except (KeyboardInterrupt, SystemExit):
             running = False
 
+    if web_port:
+        click.echo("Stopping web server...")
+        shutdown_webserver()
     click.echo("Automation stopped")
     return 0

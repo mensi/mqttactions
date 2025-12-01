@@ -1,11 +1,30 @@
 import inspect
+import json
 import logging
+import threading
 
 from typing import Any, Callable, Dict, List, Optional, Union, TypedDict, get_origin
 import paho.mqtt.client as mqtt
 from mqttactions.payloadconversion import converter_by_type
 
 logger = logging.getLogger(__name__)
+
+# Web UI manager (optional, only set when web interface is enabled)
+_web_manager = None
+
+
+def set_web_manager(manager):
+    """Register the web manager for broadcasting updates to the web UI.
+
+    This is called by the web module when the web interface is started.
+    """
+    global _web_manager
+    _web_manager = manager
+
+
+def get_web_manager():
+    """Get the web manager if it exists."""
+    return _web_manager
 
 
 class Subscriber(TypedDict):
@@ -80,15 +99,36 @@ class SubscriberManager:
 _mqtt_client: Optional[mqtt.Client] = None
 # A dict mapping from a topic to subscribers to that topic
 _subscribers: Dict[str, SubscriberManager] = {}
+# Lock to protect concurrent access to _subscribers from callbacks
+_subscribers_lock = threading.Lock()
 
 
 def _on_mqtt_message(client, userdata, msg):
     """Process incoming MQTT messages and dispatch to registered handlers."""
     logger.debug(f"Received message on {msg.topic}: {msg.payload}")
-    if msg.topic not in _subscribers:
-        logger.warning(f"Received message on {msg.topic} but no subscribers are registered.")
-        return
-    _subscribers[msg.topic].notify(msg.payload)
+    
+    # Broadcast to web UI if available
+    if _web_manager:
+        try:
+            payload_str = msg.payload.decode('utf-8')
+        except:
+            payload_str = str(msg.payload)
+        _web_manager.broadcast(json.dumps({
+            'type': 'mqtt_message',
+            'data': {
+                'topic': msg.topic,
+                'payload': payload_str
+            }
+        }))
+    
+    with _subscribers_lock:
+        if msg.topic not in _subscribers:
+            logger.warning(f"Received message on {msg.topic} but no subscribers are registered.")
+            return
+        subscriber_manager = _subscribers[msg.topic]
+    
+    # Call notify outside the lock to avoid holding the lock during callback execution
+    subscriber_manager.notify(msg.payload)
 
 
 def _on_mqtt_connect(client, userdata, connect_flags: mqtt.ConnectFlags,
@@ -98,7 +138,13 @@ def _on_mqtt_connect(client, userdata, connect_flags: mqtt.ConnectFlags,
         logger.error(f"MQTT connection failed: {reason_code.getName()}")
         return
     logger.info("MQTT connected")
-    for topic in _subscribers:
+    
+    # Get a snapshot of topics while holding the lock
+    with _subscribers_lock:
+        topics = list(_subscribers.keys())
+    
+    # Subscribe to all topics
+    for topic in topics:
         client.subscribe(topic)
         logger.info(f"Subscribed to topic: {topic}")
 
@@ -126,8 +172,21 @@ def get_client() -> mqtt.Client:
 
 
 def add_subscriber(topic: str, callback: Callable, payload_filter: Optional[Union[str, dict]] = None):
-    if topic not in _subscribers:
-        get_client().subscribe(topic)
+    with _subscribers_lock:
+        if topic in _subscribers:
+            _subscribers[topic].add_subscriber(callback, payload_filter)
+            return
         logger.info(f"Subscribed to topic: {topic}")
         _subscribers[topic] = SubscriberManager()
-    _subscribers[topic].add_subscriber(callback, payload_filter)
+        _subscribers[topic].add_subscriber(callback, payload_filter)
+    get_client().subscribe(topic)
+
+
+def get_subscribed_topics() -> List[str]:
+    """Get a list of all topics that have subscribers.
+
+    Returns:
+        A list of MQTT topic strings
+    """
+    with _subscribers_lock:
+        return list(_subscribers.keys())

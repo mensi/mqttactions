@@ -5,6 +5,7 @@ import paho.mqtt.client as mqtt
 
 from mqttactions.cli.discover import discover_cmd
 from mqttactions.cli.run import run_cmd
+from mqttactions.cli.test import test_cmd
 
 
 logger = logging.getLogger(__name__)
@@ -18,6 +19,11 @@ logger = logging.getLogger(__name__)
 @click.pass_context
 def cli(ctx: click.Context, host, port, username, password):
     """MQTT Actions CLI tool for controlling smart home devices."""
+    
+    # If running 'test' command, we don't need a real MQTT connection
+    if ctx.invoked_subcommand == 'test':
+        return
+
     # Connect to MQTT broker
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     if username is not None:
@@ -47,6 +53,7 @@ def cli(ctx: click.Context, host, port, username, password):
 # Register subcommands
 cli.add_command(discover_cmd)
 cli.add_command(run_cmd)
+cli.add_command(test_cmd)
 
 
 def main():

@@ -1,6 +1,6 @@
 [project]
 name = "mqttactions"
-version = "0.3.1"
+version = "0.4.0"
 description = "Toolkit to interact with MQTT to build simple action rules"
 readme = "README.md"
 license = { file = "LICENSE.txt" }
@@ -10,11 +10,16 @@ authors = [
 requires-python = ">=3.10"
 dependencies = [
     "click>=8.1.8",
+    "fastapi>=0.111.0",
     "hatchling>=1.27.0",
     "paho-mqtt>=2.1.0",
     "suntime>=1.3.2",
     "timezonefinder>=6.5.9",
     "tzdata>=2025.2 ; sys_platform == 'win32'",
+    "uvicorn>=0.30.0",
+    "jinja2",
+    "websockets",
+    "pydantic",
 ]
 
 [project.urls]

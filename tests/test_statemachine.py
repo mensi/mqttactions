@@ -247,7 +247,8 @@ class TestState:
         # Should still be in state2, not state3
         assert sm.get_current_state_name() == "state2"
 
-    def test_method_chaining(self):
+    @patch('mqttactions.statemachine.add_subscriber')
+    def test_method_chaining(self, mock_add_subscriber):
         """Test that state methods return self for chaining."""
         sm = StateMachine()
         state = sm.add_state("test")
@@ -313,3 +314,32 @@ class TestState:
 
         # Should end up in a valid state
         assert sm.get_current_state_name() in ["state1", "state2"]
+
+    def test_to_model(self):
+        """Test conversion to Pydantic model."""
+        sm = StateMachine(name="TestSM")
+        state1 = sm.add_state("state1")
+        state2 = sm.add_state("state2")
+        
+        # Add transitions
+        with patch('mqttactions.statemachine.add_subscriber'):
+            state1.on_message("topic/test", "state2", payload_filter="on")
+            state2.after_timeout(5.0, "state1")
+            
+        # Convert to model
+        model = sm.to_model()
+        
+        # Verify model structure
+        assert model.currentState == "state1"
+        assert len(model.nodes) == 2
+        assert len(model.edges) == 2
+        
+        # Verify nodes
+        node_ids = [n.id for n in model.nodes]
+        assert "state1" in node_ids
+        assert "state2" in node_ids
+        
+        # Verify edges
+        edge_types = [e.type for e in model.edges]
+        assert "message" in edge_types
+        assert "timeout" in edge_types

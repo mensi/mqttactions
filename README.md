@@ -13,6 +13,10 @@ things. Want to have a button (via Zigbee2MQTT) that checks if you have a new
 email and if so, flashes a light 3 times? No problem, just requires some more
 Python code.
 
+Note that this project is my experimentation with AI-assisted coding. I do look
+over every change, but I let AI do as much of the work as possible as long
+as the result is still useful for my own usage.
+
 ## Installation
 
 mqttactions is available on PyPI and can be installed with `pip`:

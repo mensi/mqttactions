@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MQTT Actions - Simulation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --accent-color: #38bdf8;
+            --border-color: #334155;
+            --success-color: #22c55e;
+            --danger-color: #ef4444;
+            --font-sans: 'Inter', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            line-height: 1.5;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background-color: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.25rem;
+            font-weight: 700;
+            background: linear-gradient(to right, var(--accent-color), #818cf8);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.025em;
+            text-decoration: none;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+            width: 100%;
+            flex: 1;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        h2 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+
+        input,
+        select,
+        textarea {
+            width: 100%;
+            background-color: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 0.75rem;
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            transition: border-color 0.2s;
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        button {
+            background-color: var(--accent-color);
+            color: #0f172a;
+            border: none;
+            border-radius: 6px;
+            padding: 0.75rem 1.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            width: 100%;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        #status-message {
+            margin-top: 1rem;
+            padding: 0.75rem;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            display: none;
+        }
+
+        .success {
+            background-color: rgba(34, 197, 94, 0.1);
+            color: var(--success-color);
+            border: 1px solid rgba(34, 197, 94, 0.2);
+        }
+
+        .error {
+            background-color: rgba(239, 68, 68, 0.1);
+            color: var(--danger-color);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+
+        .back-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.9rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .back-link:hover {
+            color: var(--text-primary);
+        }
+
+        .topic-badge {
+            display: inline-block;
+            background-color: rgba(56, 189, 248, 0.1);
+            color: var(--accent-color);
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            margin-right: 0.5rem;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+            border: 1px solid rgba(56, 189, 248, 0.2);
+        }
+
+        .topic-badge:hover {
+            background-color: rgba(56, 189, 248, 0.2);
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <a href="/" class="logo">MQTT Actions</a>
+    </header>
+
+    <div class="container">
+        <a href="/" class="back-link">← Back to Dashboard</a>
+
+        <div class="card">
+            <h2>Inject MQTT Message</h2>
+            <div class="form-group">
+                <label for="topic">Topic</label>
+                <input type="text" id="topic" placeholder="e.g. sensors/temp/kitchen" list="subscribed-topics">
+                <datalist id="subscribed-topics"></datalist>
+            </div>
+
+            <div id="quick-topics" style="margin-bottom: 1rem;">
+                <!-- Topics will be populated here -->
+            </div>
+
+            <div class="form-group">
+                <label for="payload">Payload</label>
+                <textarea id="payload" rows="3" placeholder="Message content"></textarea>
+            </div>
+            <button onclick="injectMessage()">Publish Message</button>
+
+            <div id="status-message"></div>
+        </div>
+    </div>
+
+    <script>
+        // Fetch initial data to populate topics
+        async function fetchTopics() {
+            try {
+                const response = await fetch('/api/data');
+                const data = await response.json();
+
+                const datalist = document.getElementById('subscribed-topics');
+                const quickTopics = document.getElementById('quick-topics');
+
+                datalist.innerHTML = '';
+                quickTopics.innerHTML = '';
+
+                if (data.topics && data.topics.length > 0) {
+                    const label = document.createElement('div');
+                    label.textContent = 'Subscribed Topics (click to fill):';
+                    label.style.fontSize = '0.8rem';
+                    label.style.color = 'var(--text-secondary)';
+                    label.style.marginBottom = '0.5rem';
+                    quickTopics.appendChild(label);
+
+                    data.topics.forEach(topic => {
+                        // Add to datalist
+                        const option = document.createElement('option');
+                        option.value = topic;
+                        datalist.appendChild(option);
+
+                        // Add clickable badge
+                        const badge = document.createElement('span');
+                        badge.className = 'topic-badge';
+                        badge.textContent = topic;
+                        badge.onclick = () => {
+                            document.getElementById('topic').value = topic;
+                        };
+                        quickTopics.appendChild(badge);
+                    });
+                }
+            } catch (error) {
+                console.error('Error fetching topics:', error);
+            }
+        }
+
+        async function injectMessage() {
+            const topic = document.getElementById('topic').value;
+            const payload = document.getElementById('payload').value;
+            const statusDiv = document.getElementById('status-message');
+
+            if (!topic) {
+                showStatus('Please enter a topic', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/inject', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ topic, payload }),
+                });
+
+                const result = await response.json();
+
+                if (response.ok && !result.error) {
+                    showStatus('Message injected successfully', 'success');
+                } else {
+                    showStatus(result.error || 'Failed to inject message', 'error');
+                }
+            } catch (error) {
+                showStatus('Network error', 'error');
+            }
+        }
+
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status-message');
+            statusDiv.textContent = message;
+            statusDiv.className = type;
+            statusDiv.style.display = 'block';
+
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 3000);
+        }
+
+        // Initialize
+        fetchTopics();
+    </script>
+</body>
+
+</html>

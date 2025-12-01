@@ -1,15 +1,29 @@
+import json
 import logging
 import threading
-from functools import partial, wraps, update_wrapper
+from functools import partial
 from typing import Dict, Optional, Callable, Union, Tuple
-from mqttactions.runtime import add_subscriber
+from mqttactions.runtime import add_subscriber, get_web_manager
 from mqttactions.payloadconversion import converter_by_type, PayloadFilter, matches_filter, get_filter_type
+from mqttactions.web.models import Diagram, Node, Edge
 
 logger = logging.getLogger(__name__)
 
 # Type aliases to make code more readable
 StateName = str
 MqttTopic = str
+
+# Global registry of all state machines
+_state_machines = []
+
+
+def get_state_machines():
+    """Get all registered state machines.
+
+    Returns:
+        List of all StateMachine instances
+    """
+    return _state_machines
 
 
 class State:
@@ -128,12 +142,21 @@ class State:
 class StateMachine:
     """The main state machine class for managing states and transitions."""
 
-    def __init__(self):
+    def __init__(self, name: Optional[str] = None):
+        """Initialize a new state machine.
+
+        Args:
+            name: Optional name for the state machine (for web UI identification)
+        """
+        self.name = name or f"StateMachine_{id(self)}"
         self.states: Dict[StateName, State] = {}
         self.topics_watched = set()
         self.state_transitions: Dict[MqttTopic, Dict[StateName, list[tuple[StateName, PayloadFilter]]]] = {}
         self.current_state: Optional[State] = None
         self._lock = threading.Lock()
+
+        # Register this state machine globally
+        _state_machines.append(self)
 
     def add_state(self, name: StateName) -> State:
         """Add a new state to the state machine.
@@ -176,6 +199,8 @@ class StateMachine:
             if self.current_state == target_state:
                 return  # Already in the target state
 
+            old_state_name = self.current_state.name if self.current_state else None
+
             # Exit the current state
             if self.current_state:
                 self.current_state.exit()
@@ -183,6 +208,27 @@ class StateMachine:
             # Enter the new state
             self.current_state = target_state
             target_state.enter()
+
+            # Capture state for broadcast
+            new_state_name = target_state.name
+
+            # Broadcast state change to web UI if available
+            web_manager = get_web_manager()
+            if web_manager:
+                try:
+                    diagram_data = self.to_model().model_dump()
+                    web_manager.broadcast(json.dumps({
+                        'type': 'state_change',
+                        'data': {
+                            'statemachine': self.name,
+                            'old_state': old_state_name,
+                            'state': new_state_name,
+                            'diagram': diagram_data
+                        }
+                    }))
+                    logger.debug(f"Broadcast state change: {self.name} -> {new_state_name}")
+                except Exception as e:
+                    logger.error(f"Error broadcasting state change: {e}")
 
     def register_transition(self, source_state_name: StateName, target_state_name: StateName,
                             topic: MqttTopic, payload_filter: PayloadFilter = None):
@@ -215,3 +261,77 @@ class StateMachine:
         """
         with self._lock:
             return self.current_state.name if self.current_state else None
+
+    def to_model(self) -> 'Diagram':
+        """Convert this state machine to a Pydantic model for visualization.
+
+        Returns:
+            A Diagram model with nodes, edges, and current state information
+        """
+        nodes = []
+        edges = []
+        
+        # Add all states as nodes
+        for state_name in self.states:
+            nodes.append(Node(
+                id=state_name,
+                label=state_name,
+                type='state'
+            ))
+        
+        # Process regular message transitions
+        transition_id = 0
+        for topic, state_transitions in self.state_transitions.items():
+            for source_state, transitions in state_transitions.items():
+                for target_state, payload_filter in transitions:
+                    transition_id += 1
+                    
+                    # Create a readable filter description
+                    filter_desc = None
+                    if payload_filter is not None:
+                        if callable(payload_filter):
+                            # It's a function - get its name
+                            filter_desc = getattr(payload_filter, '__name__', 'custom filter')
+                        else:
+                            filter_desc = str(payload_filter)
+                    
+                    edges.append(Edge(
+                        id=f'trans_{transition_id}',
+                        source=source_state,
+                        target=target_state,
+                        type='message',
+                        topic=topic,
+                        filter=filter_desc,
+                        label=topic.split('/')[-1]  # Short label for display
+                    ))
+
+        # Add timeout transitions
+        for state_name, state in self.states.items():
+            if state._timeout_transition:
+                timeout_seconds, callback = state._timeout_transition
+                try:
+                    target_state_obj = callback()
+                    target_name = None
+                    if isinstance(target_state_obj, State):
+                        target_name = target_state_obj.name
+                    elif isinstance(target_state_obj, str):
+                        target_name = target_state_obj
+
+                    if target_name:
+                        transition_id += 1
+                        edges.append(Edge(
+                            id=f'trans_{transition_id}',
+                            source=state_name,
+                            target=target_name,
+                            type='timeout',
+                            timeout=timeout_seconds,
+                            label='⏱️'
+                        ))
+                except:
+                    pass  # Can't determine target state dynamically
+        
+        return Diagram(
+            nodes=nodes,
+            edges=edges,
+            currentState=self.current_state.name if self.current_state else None
+        )

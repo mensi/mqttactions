@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>mqttactions Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --accent-color: #38bdf8;
+            --accent-hover: #0ea5e9;
+            --border-color: #334155;
+            --success-color: #22c55e;
+            --error-color: #ef4444;
+            --warning-color: #eab308;
+            --font-sans: 'Inter', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background-color: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(12px);
+            padding: 1rem 2rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 700;
+            background: linear-gradient(to right, var(--accent-color), #818cf8);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.025em;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            background: rgba(15, 23, 42, 0.5);
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            border: 1px solid var(--border-color);
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--error-color);
+            transition: background-color 0.3s ease;
+        }
+
+        .status-indicator.connected {
+            background-color: var(--success-color);
+            box-shadow: 0 0 8px rgba(34, 197, 94, 0.4);
+        }
+
+        .container {
+            padding: 2rem;
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 2rem;
+            max-width: 1800px;
+            margin: 0 auto;
+            width: 100%;
+            flex: 1;
+        }
+
+        @media (max-width: 1024px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .section-title {
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Topics Column */
+        .topics-column {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .topic-card {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .topic-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            border-color: var(--accent-color);
+        }
+
+        .topic-header {
+            padding: 0.75rem 1rem;
+            background-color: rgba(15, 23, 42, 0.3);
+            border-bottom: 1px solid var(--border-color);
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: var(--accent-color);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .topic-messages {
+            height: 150px;
+            overflow-y: auto;
+            padding: 0.5rem;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+        }
+
+        .message-item {
+            padding: 0.25rem 0.5rem;
+            border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+            display: flex;
+            gap: 0.75rem;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-5px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message-time {
+            color: var(--text-secondary);
+            min-width: 60px;
+        }
+
+        .message-payload {
+            color: var(--text-primary);
+            word-break: break-all;
+        }
+
+        /* State Machines Column */
+        .statemachines-column {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .sm-card {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 600px;
+        }
+
+        .sm-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: rgba(15, 23, 42, 0.3);
+        }
+
+        .sm-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .sm-current-state {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            padding: 0.25rem 0.75rem;
+            background-color: rgba(56, 189, 248, 0.1);
+            color: var(--accent-color);
+            border-radius: 4px;
+            border: 1px solid rgba(56, 189, 248, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .sm-current-state.changed {
+            background-color: rgba(34, 197, 94, 0.2);
+            color: var(--success-color);
+            border-color: rgba(34, 197, 94, 0.4);
+        }
+
+        .sm-body {
+            flex: 1;
+            display: flex;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .sm-diagram {
+            flex: 1;
+            background-color: #1e293b;
+            background-image: radial-gradient(#334155 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        .sm-details {
+            width: 300px;
+            background-color: rgba(15, 23, 42, 0.95);
+            border-left: 1px solid var(--border-color);
+            padding: 1.5rem;
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            transform: translateX(100%);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(8px);
+            z-index: 10;
+        }
+
+        .sm-details.visible {
+            transform: translateX(0);
+        }
+
+        .detail-close {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            cursor: pointer;
+            color: var(--text-secondary);
+            padding: 0.5rem;
+        }
+
+        .detail-close:hover {
+            color: var(--text-primary);
+        }
+
+        .detail-title {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            color: var(--accent-color);
+        }
+
+        .detail-row {
+            margin-bottom: 1.25rem;
+        }
+
+        .detail-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+            letter-spacing: 0.05em;
+        }
+
+        .detail-value {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            background-color: rgba(0, 0, 0, 0.2);
+            padding: 0.5rem;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+            word-break: break-all;
+        }
+
+        /* List Spacing */
+        #topics-list,
+        #statemachines-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        /* Graph Styles */
+        .node circle {
+            fill: var(--card-bg);
+            stroke: var(--text-secondary);
+            stroke-width: 2px;
+            transition: all 0.3s ease;
+        }
+
+        .node text {
+            font-family: var(--font-sans);
+            font-size: 12px;
+            fill: var(--text-primary);
+            text-anchor: middle;
+            pointer-events: none;
+        }
+
+        .node.active circle {
+            fill: rgba(56, 189, 248, 0.2);
+            stroke: var(--accent-color);
+            stroke-width: 3px;
+            filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.4));
+        }
+
+        .node.active text {
+            font-weight: 600;
+            fill: var(--accent-color);
+        }
+
+        .edge .visible-path {
+            fill: none;
+            stroke: var(--text-secondary);
+            stroke-width: 1.5px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .edge .hit-path {
+            fill: none;
+            stroke: transparent;
+            stroke-width: 15px;
+            cursor: pointer;
+        }
+
+        .edge:hover .visible-path {
+            stroke: var(--text-primary);
+            stroke-width: 2px;
+        }
+
+        .edge.selected .visible-path {
+            stroke: var(--accent-color);
+            stroke-width: 2.5px;
+            filter: drop-shadow(0 0 4px rgba(56, 189, 248, 0.4));
+        }
+
+        .edge.timeout .visible-path {
+            stroke-dasharray: 5, 5;
+        }
+
+        .arrowHead {
+            fill: var(--text-secondary);
+        }
+
+        .edge.selected .arrowHead {
+            fill: var(--accent-color);
+        }
+
+        .edge-label-bg {
+            fill: var(--card-bg);
+            opacity: 0.8;
+        }
+
+        .edge-label {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            fill: var(--text-secondary);
+            text-anchor: middle;
+            pointer-events: none;
+        }
+
+        /* Scrollbars */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.1);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-secondary);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <div class="logo">MQTT Actions</div>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            {% if is_test_mode %}
+            <a href="/simulate"
+                style="color: var(--accent-color); text-decoration: none; font-size: 0.9rem; font-weight: 500; border: 1px solid var(--accent-color); padding: 0.25rem 0.75rem; border-radius: 4px;">Simulation
+                Mode</a>
+            {% endif %}
+            <div class="status">
+                <div class="status-indicator" id="status-indicator"></div>
+                <span id="status-text">Connecting...</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="topics-column">
+            <div class="section-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M4 11a9 9 0 0 1 9 9"></path>
+                    <path d="M4 4a16 16 0 0 1 16 16"></path>
+                    <circle cx="5" cy="19" r="1"></circle>
+                </svg>
+                Subscribed Topics
+            </div>
+            <div id="topics-list"></div>
+        </div>
+
+        <div class="statemachines-column">
+            <div class="section-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                </svg>
+                State Machines
+            </div>
+            <div id="statemachines-list"></div>
+        </div>
+    </div>
+
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dagre@0.8.5/dist/dagre.min.js"></script>
+    <script>
+        const topicsList = document.getElementById('topics-list');
+        const statemachinesList = document.getElementById('statemachines-list');
+        const statusIndicator = document.getElementById('status-indicator');
+        const statusText = document.getElementById('status-text');
+
+        const MAX_MESSAGES_PER_TOPIC = 50;
+        const graphInstances = new Map();
+
+        function setConnectionStatus(connected) {
+            if (connected) {
+                statusIndicator.classList.add('connected');
+                statusText.textContent = 'Connected';
+            } else {
+                statusIndicator.classList.remove('connected');
+                statusText.textContent = 'Disconnected';
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function sanitizeId(text) {
+            return text.replace(/[^a-zA-Z0-9-_]/g, '-');
+        }
+
+        function formatTime() {
+            const now = new Date();
+            return now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+
+        function createStateMachineGraph(containerId, diagramData, smName) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            container.innerHTML = '';
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            // Zoom behavior
+            const zoom = d3.zoom()
+                .scaleExtent([0.5, 2])
+                .on('zoom', (event) => {
+                    g.attr('transform', event.transform);
+                });
+
+            const svg = d3.select(`#${containerId}`)
+                .append('svg')
+                .attr('width', '100%')
+                .attr('height', '100%')
+                .call(zoom)
+                .on("dblclick.zoom", null);
+
+            const g = svg.append('g');
+
+            // Dagre Graph Setup
+            const dagreGraph = new dagre.graphlib.Graph({ multigraph: true });
+            dagreGraph.setGraph({
+                rankdir: 'LR',
+                nodesep: 60,
+                ranksep: 100,
+                marginx: 40,
+                marginy: 40
+            });
+            dagreGraph.setDefaultEdgeLabel(() => ({}));
+
+            // Nodes
+            diagramData.nodes.forEach(node => {
+                dagreGraph.setNode(node.id, { label: node.label, width: 120, height: 50 });
+            });
+
+            // Edges
+            diagramData.edges.forEach(edge => {
+                dagreGraph.setEdge(edge.source, edge.target, { ...edge, width: 40, height: 20 }, edge.id);
+            });
+
+            dagre.layout(dagreGraph);
+
+            // Arrow Marker
+            const defs = svg.append('defs');
+            ['arrow', 'arrow-timeout', 'arrow-selected'].forEach(id => {
+                defs.append('marker')
+                    .attr('id', id)
+                    .attr('viewBox', '0 -5 10 10')
+                    .attr('refX', 28) // Adjusted for node radius
+                    .attr('refY', 0)
+                    .attr('markerWidth', 6)
+                    .attr('markerHeight', 6)
+                    .attr('orient', 'auto')
+                    .append('path')
+                    .attr('d', 'M0,-5L10,0L0,5')
+                    .attr('class', 'arrowHead')
+                    .style('fill', id === 'arrow-selected' ? 'var(--accent-color)' : 'var(--text-secondary)');
+            });
+
+            // Draw Edges
+            const edges = g.selectAll('.edge')
+                .data(diagramData.edges)
+                .enter().append('g')
+                .attr('class', d => d.type === 'timeout' ? 'edge timeout' : 'edge')
+                .attr('data-id', d => d.id);
+
+            edges.each(function (d) {
+                const edge = dagreGraph.edge({ v: d.source, w: d.target, name: d.id });
+                const line = d3.line().x(p => p.x).y(p => p.y).curve(d3.curveBasis);
+
+                // Invisible hit area
+                d3.select(this).append('path')
+                    .attr('d', line(edge.points))
+                    .attr('class', 'hit-path');
+
+                // Visible line
+                d3.select(this).append('path')
+                    .attr('d', line(edge.points))
+                    .attr('marker-end', 'url(#arrow)')
+                    .attr('class', 'visible-path');
+
+                // Edge Label (Invisible hit area + visible text)
+                const mid = edge.points[Math.floor(edge.points.length / 2)];
+
+                // Label Background (for readability)
+                // d3.select(this).append('rect')
+                //     .attr('x', mid.x - 20).attr('y', mid.y - 10)
+                //     .attr('width', 40).attr('height', 20)
+                //     .attr('class', 'edge-label-bg');
+
+                // d3.select(this).append('text')
+                //     .attr('class', 'edge-label')
+                //     .attr('x', mid.x).attr('y', mid.y + 3)
+                //     .text(d.label.length > 10 ? d.label.substring(0, 8) + '..' : d.label);
+            });
+
+            edges.on('click', (event, d) => {
+                event.stopPropagation();
+                g.selectAll('.edge').classed('selected', false);
+                g.selectAll('.visible-path').attr('marker-end', 'url(#arrow)');
+
+                const el = d3.select(event.currentTarget);
+                el.classed('selected', true);
+                el.select('.visible-path').attr('marker-end', 'url(#arrow-selected)');
+
+                showDetails(smName, d);
+            });
+
+            // Draw Nodes
+            const nodes = g.selectAll('.node')
+                .data(diagramData.nodes)
+                .enter().append('g')
+                .attr('class', 'node')
+                .attr('transform', d => {
+                    const node = dagreGraph.node(d.id);
+                    return `translate(${node.x},${node.y})`;
+                });
+
+            nodes.append('circle').attr('r', 25);
+            nodes.append('text').attr('dy', '0.35em').text(d => d.label);
+
+            // Initial Center
+            const graphWidth = dagreGraph.graph().width;
+            const graphHeight = dagreGraph.graph().height;
+            const scale = Math.min(width / graphWidth, height / graphHeight, 1) * 0.8;
+            const x = (width - graphWidth * scale) / 2;
+            const y = (height - graphHeight * scale) / 2;
+
+            const initialTransform = d3.zoomIdentity.translate(x, y).scale(scale);
+            svg.call(zoom.transform, initialTransform);
+
+            // Highlight Current State
+            if (diagramData.currentState) {
+                nodes.filter(d => d.id === diagramData.currentState).classed('active', true);
+            }
+
+            graphInstances.set(smName, { svg, g, nodes, edges, zoom });
+
+            svg.on('click', () => {
+                g.selectAll('.edge').classed('selected', false);
+                g.selectAll('.visible-path').attr('marker-end', 'url(#arrow)');
+                hideDetails(smName);
+            });
+        }
+
+        function updateGraphState(smName, newState) {
+            const instance = graphInstances.get(smName);
+            if (!instance) return;
+
+            instance.nodes.classed('active', false);
+            instance.nodes.filter(d => d.id === newState).classed('active', true);
+        }
+
+        function showDetails(smName, data) {
+            const details = document.getElementById(`sm-details-${sanitizeId(smName)}`);
+            if (!details) return;
+
+            let content = `
+                <div class="detail-row">
+                    <div class="detail-label">Transition</div>
+                    <div class="detail-value">${escapeHtml(data.source)} → ${escapeHtml(data.target)}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Type</div>
+                    <div class="detail-value">${data.type === 'timeout' ? '⏱️ Timeout' : '📨 MQTT Message'}</div>
+                </div>
+            `;
+
+            if (data.type === 'timeout') {
+                content += `
+                    <div class="detail-row">
+                        <div class="detail-label">Duration</div>
+                        <div class="detail-value">${data.timeout}s</div>
+                    </div>
+                `;
+            } else {
+                content += `
+                    <div class="detail-row">
+                        <div class="detail-label">Topic</div>
+                        <div class="detail-value">${escapeHtml(data.topic)}</div>
+                    </div>
+                `;
+                if (data.filter) {
+                    content += `
+                        <div class="detail-row">
+                            <div class="detail-label">Filter</div>
+                            <div class="detail-value">${escapeHtml(data.filter)}</div>
+                        </div>
+                    `;
+                }
+            }
+
+            details.querySelector('.detail-content').innerHTML = content;
+            details.classList.add('visible');
+        }
+
+        function hideDetails(smName) {
+            const details = document.getElementById(`sm-details-${sanitizeId(smName)}`);
+            if (details) details.classList.remove('visible');
+        }
+
+        // WebSocket & Data Logic
+        function setupWebSocket() {
+            const ws = new WebSocket(`ws://${location.host}/ws`);
+
+            ws.onopen = () => {
+                console.log("Connected");
+                setConnectionStatus(true);
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    if (msg.type === 'mqtt_message') {
+                        handleMqttMessage(msg.data);
+                    } else if (msg.type === 'state_change') {
+                        handleStateChange(msg.data);
+                    }
+                } catch (e) {
+                    console.error("Error parsing message", e);
+                }
+            };
+
+            ws.onclose = () => {
+                console.log("Disconnected");
+                setConnectionStatus(false);
+                setTimeout(setupWebSocket, 3000);
+            };
+        }
+
+        function handleMqttMessage(data) {
+            const topicId = `topic-${sanitizeId(data.topic)}`;
+            const container = document.getElementById(`${topicId}-messages`);
+            if (!container) return;
+
+            const el = document.createElement('div');
+            el.className = 'message-item';
+            el.innerHTML = `
+                <span class="message-time">${formatTime()}</span>
+                <span class="message-payload">${escapeHtml(data.payload)}</span>
+            `;
+
+            container.insertBefore(el, container.firstChild);
+            if (container.children.length > MAX_MESSAGES_PER_TOPIC) {
+                container.removeChild(container.lastChild);
+            }
+        }
+
+        function handleStateChange(data) {
+            const smName = data.statemachine;
+            const newState = data.state;
+
+            // Update Badge
+            const badge = document.getElementById(`sm-current-${sanitizeId(smName)}`);
+            if (badge) {
+                badge.textContent = newState;
+                badge.classList.add('changed');
+                setTimeout(() => badge.classList.remove('changed'), 1000);
+            }
+
+            // Update Graph
+            updateGraphState(smName, newState);
+        }
+
+        async function init() {
+            try {
+                const res = await fetch('/api/data');
+                const data = await res.json();
+
+                // Render Topics
+                if (data.topics.length === 0) {
+                    topicsList.innerHTML = '<div class="empty-state">No subscriptions</div>';
+                } else {
+                    topicsList.innerHTML = data.topics.map(t => `
+                        <div class="topic-card" id="topic-${sanitizeId(t)}">
+                            <div class="topic-header" title="${escapeHtml(t)}">${escapeHtml(t)}</div>
+                            <div class="topic-messages" id="topic-${sanitizeId(t)}-messages"></div>
+                        </div>
+                    `).join('');
+                }
+
+                // Render State Machines
+                if (data.statemachines.length === 0) {
+                    statemachinesList.innerHTML = '<div class="empty-state">No state machines</div>';
+                } else {
+                    statemachinesList.innerHTML = data.statemachines.map(sm => `
+                        <div class="sm-card">
+                            <div class="sm-header">
+                                <div class="sm-title">${escapeHtml(sm.name)}</div>
+                                <div class="sm-current-state" id="sm-current-${sanitizeId(sm.name)}">${escapeHtml(sm.currentState)}</div>
+                            </div>
+                            <div class="sm-body">
+                                <div class="sm-diagram" id="sm-diagram-${sanitizeId(sm.name)}"></div>
+                                <div class="sm-details" id="sm-details-${sanitizeId(sm.name)}">
+                                    <div class="detail-close" onclick="hideDetails('${sm.name}')">✕</div>
+                                    <div class="detail-title">Transition Details</div>
+                                    <div class="detail-content"></div>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+
+                    // Initialize Graphs
+                    data.statemachines.forEach(sm => {
+                        createStateMachineGraph(`sm-diagram-${sanitizeId(sm.name)}`, sm.diagram, sm.name);
+                    });
+                }
+
+                setupWebSocket();
+
+            } catch (e) {
+                console.error("Init failed", e);
+                topicsList.innerHTML = '<div class="empty-state" style="color: var(--error-color)">Failed to load data</div>';
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+
+</html>
