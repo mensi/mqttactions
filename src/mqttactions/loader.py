@@ -2,6 +2,8 @@ import importlib.util
 import logging
 import os
 import sys
+
+from pathlib import Path
 from typing import List
 
 logger = logging.getLogger(__name__)
@@ -55,13 +57,19 @@ def load_scripts(script_paths: List[str]) -> int:
     """Load multiple Python scripts.
 
     Args:
-        script_paths: List of paths to Python scripts
+        script_paths: List of paths to Python scripts or directories containing scripts
 
     Returns:
         Number of successfully loaded scripts
     """
     loaded_count = 0
     for script_path in script_paths:
-        if load_script(script_path):
-            loaded_count += 1
+        path = Path(script_path)
+        if path.is_dir():
+            for file_path in path.glob("*.py"):
+                if load_script(str(file_path)):
+                    loaded_count += 1
+        else:
+            if load_script(script_path):
+                loaded_count += 1
     return loaded_count
